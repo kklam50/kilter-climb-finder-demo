@@ -1,3 +1,3 @@
-// Empty string = same-origin (the API is served from the same app as this
-// page, both locally via `uvicorn server.app:app` and on the deployed Space).
-const API_BASE_URL = "";
+// Static demo: results are precomputed JSON, fetched with relative paths so
+// the page works from any static host or sub-path.
+const DATA_BASE = "data";

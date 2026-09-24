@@ -10,8 +10,15 @@
   <div class="page">
     <header>
       <h1>Kilter Climb Finder</h1>
-      <div id="health" class="health health--unknown">checking server…</div>
+      <div id="health" class="health health--unknown">precomputed demo</div>
     </header>
+
+    <div class="demo-banner">
+      <strong>Precomputed demo</strong> — results are stored output from the
+      Kilter Climb Finder retrieval engine (top 5 per climb), not computed
+      live. Only exact climb names are supported.
+      <a href="https://github.com/kklam50/kilter-climb-finder">See the live engine</a>.
+    </div>
 
     <form id="search-form" class="search-form">
       <div class="field field--grow">
@@ -25,11 +32,6 @@
           <option value="similar">Similar</option>
           <option value="opposite">Opposite</option>
         </select>
-      </div>
-
-      <div class="field">
-        <label for="top-k">Top K</label>
-        <input id="top-k" name="top-k" type="number" min="1" max="50" value="5" />
       </div>
 
       <button type="submit" id="submit-btn">Find recommendations</button>

@@ -10,19 +10,57 @@ const resultsEl = document.getElementById("results");
 const matchesEl = document.getElementById("matches");
 const contextEl = document.getElementById("context-text");
 
-function setHealth(ok) {
-  healthEl.textContent = ok ? "server online" : "server unreachable";
-  healthEl.className = `health ${ok ? "health--ok" : "health--bad"}`;
+// --- Static data layer -----------------------------------------------------
+// The live app's API is replaced by precomputed JSON (see
+// plans/static_precomputed_demo_plan.md). Shards are keyed by the first two
+// characters of the climb uuid and cached in memory after the first fetch.
+const shardCache = new Map();
+let namesPromise = null;
+let namesById = null;
+
+async function fetchJson(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Failed to load ${path} (${res.status})`);
+  return res.json();
 }
 
-async function checkHealth() {
-  try {
-    const res = await fetch(`${API_BASE_URL}/health`);
-    const data = await res.json();
-    setHealth(res.ok && data.engine_loaded);
-  } catch {
-    setHealth(false);
+function loadShard(kind, climbId) {
+  const key = `${kind}/${climbId.slice(0, 2).toLowerCase()}`;
+  if (!shardCache.has(key)) shardCache.set(key, fetchJson(`${DATA_BASE}/${key}.json`));
+  return shardCache.get(key);
+}
+
+function toClimb([climb_id, climb_name, setter_username, created_at, angles]) {
+  return {
+    climb_id, climb_name, setter_username, created_at,
+    angles: angles.map(([angle, grade]) => ({ angle, grade })),
+  };
+}
+
+function loadNames() {
+  if (!namesPromise) {
+    namesPromise = fetchJson(`${DATA_BASE}/names.json`).then((rows) => {
+      namesById = new Map(rows.map((r) => [r[0], toClimb(r)]));
+      return rows;
+    });
   }
+  return namesPromise;
+}
+
+// Port of RetrievalEngine.assemble_context.
+function assembleContext(matches) {
+  if (!matches.length) return "No matching climbs found.";
+  return matches.map((m) => {
+    const relation = m.is_mirrored ? "mirrored" : "direct";
+    const angles = m.angles.map((a) => `${a.angle}° (${a.grade || "ungraded"})`).join(", ")
+      || "no logged angles";
+    return `- ${m.climb_name}` + ` [${angles}]: similarity ${m.score.toFixed(3)} (${relation} movement match)`;
+  }).join("\n");
+}
+
+function checkHealth() {
+  healthEl.textContent = "precomputed demo";
+  healthEl.className = "health health--ok";
 }
 
 function showStatus(message, kind) {
@@ -78,12 +116,11 @@ function boardPx(x, y, mirrored) {
 
 async function renderBoard(container, climbId, mirrored = false, title = "") {
   try {
-    const res = await fetch(`${API_BASE_URL}/climbs/${encodeURIComponent(climbId)}/holds`);
-    if (!res.ok) return;
-    const holds = await res.json();
-    const rings = holds.map((h) => {
-      const [cx, cy] = boardPx(h.x, h.y, mirrored);
-      return `<circle cx="${cx}" cy="${cy}" r="34" fill="none" stroke="${ROLE_COLORS[h.role_id] ?? "#fff"}" stroke-width="7"/>`;
+    const holds = (await loadShard("holds", climbId))[climbId];
+    if (!holds) return;
+    const rings = holds.map(([x, y, roleId]) => {
+      const [cx, cy] = boardPx(x, y, mirrored);
+      return `<circle cx="${cx}" cy="${cy}" r="34" fill="none" stroke="${ROLE_COLORS[roleId] ?? "#fff"}" stroke-width="7"/>`;
     }).join("");
     container.innerHTML = `<svg viewBox="${BOARD_VIEWBOX}" class="board">
       <image href="board.png" width="1600" height="1236"/>${rings}</svg>`;
@@ -137,51 +174,44 @@ function escapeHtml(str) {
 function getFormParams() {
   return {
     mode: document.getElementById("mode").value,
-    top_k: document.getElementById("top-k").value,
   };
 }
 
+// Exact case-insensitive name match, ordered by created_at, capped at 20 --
+// the same rule as the live app's exact-match path. The live app's fuzzy
+// (typo-tolerant) fallback is not part of the static demo.
 async function lookupClimbsByName(name) {
-  const res = await fetch(`${API_BASE_URL}/climbs/lookup?${new URLSearchParams({ name })}`);
-
-  // 404 here means "no climb in the db/index matches" -- not an error case,
-  // it's the fork into the (stubbed) unindexed-search flow.
-  if (res.status === 404) {
-    return null;
-  }
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Lookup failed with status ${res.status}`);
-  }
-
-  return res.json();
+  const rows = await loadNames();
+  const wanted = name.toLowerCase();
+  const found = rows.filter((r) => r[1] && r[1].toLowerCase() === wanted).slice(0, 20);
+  return found.length ? found.map(toClimb) : null;
 }
 
 async function searchUnindexedClimb(name) {
-  showStatus("Climb not found in database — checking alternate search…", "loading");
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/climbs/unindexed-search?${new URLSearchParams({ name })}`);
-    const data = await res.json();
-    showStatus(data.message, "info");
-  } catch {
-    showStatus("Climb not found, and alternate search is unavailable.", "error");
-  }
+  showStatus(
+    `'${name}' wasn't found in the demo's indexed climbs. Searching for climbs ` +
+    `outside the database isn't supported.`,
+    "info"
+  );
 }
 
 async function fetchRecommendations(climbId) {
-  const params = new URLSearchParams(getFormParams());
-  const res = await fetch(
-    `${API_BASE_URL}/climbs/${encodeURIComponent(climbId)}/recommendations?${params}`
-  );
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed with status ${res.status}`);
-  }
-
-  return res.json();
+  const { mode } = getFormParams();
+  await loadNames();
+  const entry = (await loadShard("recs", climbId))[climbId];
+  if (!entry) throw new Error(`No precomputed results for climb ${climbId}`);
+  const matches = entry[mode].map(([id, score, mirrored, windows]) => {
+    const c = namesById.get(id);
+    return {
+      climb_id: id,
+      climb_name: c?.climb_name ?? null,
+      angles: c?.angles ?? [],
+      is_mirrored: !!mirrored,
+      score,
+      matched_window_count: windows,
+    };
+  });
+  return { reference_climb_id: climbId, mode, matches, context: assembleContext(matches) };
 }
 
 function renderAngleChips(angles) {

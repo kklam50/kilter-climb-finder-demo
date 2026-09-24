@@ -1,7 +1,20 @@
-/server/db
-/server/__pycache__
+# Tooling / environments
 .claude
 .venv
-/server/generate_training_data_v2/movement_encoder_model
-/server/generate_training_data_v2/__pycache__
-/plans
+__pycache__/
+*.pyc
+
+# Engine code and data: only needed to re-run the export, never to deploy
+/server/
+/export_climbing_data.py
+
+# Docs / planning
+/plans/
+
+# Generated intermediates and build output
+/work*/
+/data_limit/
+/static_demo/
+export.log
+export.err
+verify.log

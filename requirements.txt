@@ -1,8 +1,5 @@
---extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.10.0+cu128
-fastapi==0.141.1
-uvicorn[standard]==0.52.4
-sentence-transformers==5.7.0
-numpy==2.4.6
-rapidfuzz==3.14.6
-pydantic==2.13.4
+# Only needed to run scripts/export_static_demo.py / verify_static_demo.py.
+# The deployed demo is static files; sentence-transformers is stubbed out
+# by the scripts (the model is never used at search time).
+numpy
+rapidfuzz

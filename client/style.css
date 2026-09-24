@@ -384,3 +384,12 @@ button:disabled {
     flex: 1 1 100%;
   }
 }
+.demo-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  background: rgba(255, 165, 0, 0.12);
+  border: 1px solid rgba(255, 165, 0, 0.5);
+}
